@@ -1,0 +1,44 @@
+# Harvest configuration file
+
+# Database settings
+database:
+  path: "db/images.db"
+
+# Storage settings
+storage:
+  path: "storage"
+  max_file_size: 10485760  # 10MB in bytes
+
+# Download settings
+download:
+  timeout: 30
+  max_concurrent: 5
+  retry_attempts: 3
+
+# Deduplication settings
+deduplication:
+  enabled: true
+  threshold: 5  # Perceptual hash threshold
+  keep_strategy: "first"  # first, smallest, largest
+
+# API settings
+apis:
+  unsplash:
+    access_key: ""  # Add your Unsplash access key here
+    rate_limit: 50  # requests per hour
+
+# Logging settings
+logging:
+  level: "INFO"
+  file: "logs/harvest.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Scheduler settings (for automated harvesting)
+scheduler:
+  enabled: false
+  jobs:
+    - name: "daily_harvest"
+      schedule: "0 9 * * *"  # Daily at 9 AM
+      source: "unsplash"
+      query: "nature"
+      count: 10
