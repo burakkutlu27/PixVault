@@ -13,6 +13,7 @@ from tqdm import tqdm
 from .config import load_config
 from .db import init_db
 from .adapters.unsplash import search_unsplash
+from .adapters.browser import fetch_images_sync
 from .downloader import download_and_store
 from .utils.logger import get_logger
 
@@ -26,14 +27,16 @@ def main():
 Examples:
   python -m harvest.cli --source unsplash --query "dev iş makinesi" --limit 100 --label excavator
   python -m harvest.cli --source unsplash --query "nature" --limit 50 --label landscape
+  python -m harvest.cli --source browser --query "mountain landscape" --limit 20 --label mountains
+  python -m harvest.cli --source browser --query "abstract art" --limit 30 --label abstract
         """
     )
     
     parser.add_argument(
         "--source",
         required=True,
-        choices=["unsplash"],
-        help="Image source to harvest from (currently only 'unsplash' is supported)"
+        choices=["unsplash", "browser"],
+        help="Image source to harvest from ('unsplash' for API, 'browser' for web scraping)"
     )
     
     parser.add_argument(
@@ -94,6 +97,19 @@ Examples:
                 sys.exit(0)
             
             logger.info(f"Found {len(url_list)} images from Unsplash")
+        
+        elif args.source == "browser":
+            # Use browser adapter for web scraping
+            logger.info("Using browser adapter for web scraping...")
+            logger.warning("Browser scraping may take longer due to human-like behavior simulation")
+            
+            url_list = fetch_images_sync(args.query, args.limit)
+            
+            if not url_list:
+                logger.warning("No images found for the given query")
+                sys.exit(0)
+            
+            logger.info(f"Found {len(url_list)} images from web search")
         
         else:
             logger.error(f"Unsupported source: {args.source}")
