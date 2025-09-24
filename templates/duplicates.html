@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}Duplicate Images - PixVault{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="bi bi-files"></i> Duplicate Images</h1>
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-outline-primary" onclick="loadDuplicates()">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+                <button type="button" class="btn btn-outline-success" onclick="approveAllGroups()">
+                    <i class="bi bi-check-all"></i> Approve All Groups
+                </button>
+            </div>
+        </div>
+
+        <!-- Duplicate Groups -->
+        <div id="duplicates-container">
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading duplicate groups...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let duplicateGroups = [];
+
+// Load duplicates on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadDuplicates();
+});
+
+async function loadDuplicates() {
+    try {
+        showLoading();
+        
+        duplicateGroups = await apiCall('/api/duplicates');
+        
+        displayDuplicates(duplicateGroups);
+        
+    } catch (error) {
+        showToast('Failed to load duplicates', 'danger');
+        document.getElementById('duplicates-container').innerHTML = `
+            <div class="alert alert-danger" role="alert">
+                <i class="bi bi-exclamation-triangle"></i> Failed to load duplicate groups. Please try again.
+            </div>
+        `;
+    } finally {
+        hideLoading();
+    }
+}
+
+function displayDuplicates(groups) {
+    const container = document.getElementById('duplicates-container');
+    
+    if (groups.length === 0) {
+        container.innerHTML = `
+            <div class="alert alert-success" role="alert">
+                <i class="bi bi-check-circle"></i> No duplicate groups found! All images are unique.
+            </div>
+        `;
+        return;
+    }
+    
+    const html = `
+        <div class="row g-4">
+            ${groups.map((group, index) => `
+                <div class="col-12">
+                    <div class="card duplicate-group">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="bi bi-files"></i> Duplicate Group ${index + 1}
+                                <span class="badge bg-danger ms-2">${group.duplicate_count} duplicates</span>
+                            </h5>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-success" onclick="approveGroup('${group.group_id}')">
+                                    <i class="bi bi-check"></i> Approve Group
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="rejectGroup('${group.group_id}')">
+                                    <i class="bi bi-x"></i> Reject Group
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                ${group.images.map((img, imgIndex) => `
+                                    <div class="col-lg-3 col-md-4 col-sm-6">
+                                        <div class="card h-100">
+                                            <div class="card-img-top d-flex align-items-center justify-content-center" style="height: 150px; background-color: #f8f9fa;">
+                                                ${img.thumbnail ? 
+                                                    `<img src="${img.thumbnail}" class="img-fluid" style="max-height: 150px; object-fit: cover;" alt="Thumbnail">` :
+                                                    `<i class="bi bi-image text-muted" style="font-size: 2rem;"></i>`
+                                                }
+                                            </div>
+                                            <div class="card-body">
+                                                <h6 class="card-title text-truncate" title="${img.label}">${img.label || 'Unlabeled'}</h6>
+                                                <p class="card-text small text-muted">
+                                                    ${img.width} × ${img.height} • ${img.format}
+                                                </p>
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <span class="badge status-badge bg-${getStatusColor(img.status)}">${img.status}</span>
+                                                    ${imgIndex === 0 ? '<span class="badge bg-primary">Primary</span>' : ''}
+                                                </div>
+                                            </div>
+                                            <div class="card-footer">
+                                                <div class="btn-group w-100" role="group">
+                                                    <button class="btn btn-sm btn-outline-primary" onclick="viewImage('${img.id}')">
+                                                        <i class="bi bi-eye"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-outline-success" onclick="approveImage('${img.id}')">
+                                                        <i class="bi bi-check"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-outline-danger" onclick="rejectImage('${img.id}')">
+                                                        <i class="bi bi-x"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-outline-secondary" onclick="deleteImage('${img.id}')">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+    container.innerHTML = html;
+}
+
+async function approveGroup(groupId) {
+    if (!confirm('Are you sure you want to approve all images in this group?')) {
+        return;
+    }
+    
+    try {
+        showLoading();
+        
+        const group = duplicateGroups.find(g => g.group_id === groupId);
+        if (!group) {
+            showToast('Group not found', 'danger');
+            return;
+        }
+        
+        // Approve all images in the group
+        for (const img of group.images) {
+            await apiCall(`/api/images/${img.id}/approve`, { method: 'POST' });
+        }
+        
+        showToast(`Approved ${group.images.length} images in group`, 'success');
+        loadDuplicates();
+        
+    } catch (error) {
+        showToast('Failed to approve group', 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function rejectGroup(groupId) {
+    if (!confirm('Are you sure you want to reject all images in this group?')) {
+        return;
+    }
+    
+    try {
+        showLoading();
+        
+        const group = duplicateGroups.find(g => g.group_id === groupId);
+        if (!group) {
+            showToast('Group not found', 'danger');
+            return;
+        }
+        
+        // Reject all images in the group
+        for (const img of group.images) {
+            await apiCall(`/api/images/${img.id}/reject`, { method: 'POST' });
+        }
+        
+        showToast(`Rejected ${group.images.length} images in group`, 'success');
+        loadDuplicates();
+        
+    } catch (error) {
+        showToast('Failed to reject group', 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function approveAllGroups() {
+    if (!confirm('Are you sure you want to approve all duplicate groups?')) {
+        return;
+    }
+    
+    try {
+        showLoading();
+        
+        let totalApproved = 0;
+        for (const group of duplicateGroups) {
+            for (const img of group.images) {
+                await apiCall(`/api/images/${img.id}/approve`, { method: 'POST' });
+                totalApproved++;
+            }
+        }
+        
+        showToast(`Approved ${totalApproved} images in all groups`, 'success');
+        loadDuplicates();
+        
+    } catch (error) {
+        showToast('Failed to approve all groups', 'danger');
+    } finally {
+        hideLoading();
+    }
+}
+
+function getStatusColor(status) {
+    switch (status) {
+        case 'downloaded': return 'primary';
+        case 'approved': return 'success';
+        case 'rejected': return 'danger';
+        case 'duplicate': return 'warning';
+        default: return 'secondary';
+    }
+}
+
+function viewImage(imageId) {
+    // Open image in new tab
+    window.open(`/api/images/${imageId}/file`, '_blank');
+}
+</script>
+{% endblock %}

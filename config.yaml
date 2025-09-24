@@ -42,3 +42,44 @@ scheduler:
       source: "unsplash"
       query: "nature"
       count: 10
+
+# Proxy settings
+proxy:
+  enabled: false
+  rotation_strategy: "round_robin"  # round_robin, random, weighted
+  health_check_interval: 300  # 5 minutes
+  max_failures: 3
+  health_check_timeout: 10
+  proxies:
+    # Example proxy configurations (replace with your actual proxies)
+    # - host: "proxy1.example.com"
+    #   port: 8080
+    #   username: "user1"
+    #   password: "pass1"
+    #   protocol: "http"
+    #   country: "US"
+    #   provider: "provider1"
+    # - host: "proxy2.example.com"
+    #   port: 3128
+    #   username: "user2"
+    #   password: "pass2"
+    #   protocol: "http"
+    #   country: "UK"
+    #   provider: "provider2"
+
+# Backup settings
+backup:
+  storage_path: "storage"
+  db_path: "db/images.db"
+  backup_root: "backups"
+  compression: true
+  encryption: false
+  encryption_key: null  # Set to enable encryption
+  retention_days: 30
+  max_backups: 10
+  exclude_patterns:
+    - "*.tmp"
+    - "*.log"
+    - "__pycache__"
+    - "*.pyc"
+    - ".DS_Store"
