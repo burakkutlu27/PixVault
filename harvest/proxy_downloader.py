@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from .db import insert_image, find_by_md5
 from .utils.logger import get_logger
+from .utils.retry import create_retryable_client
 from .proxy_manager import get_proxy_manager, get_proxy, mark_bad, mark_success
 
 logger = get_logger("harvest.proxy_downloader")
@@ -62,16 +63,15 @@ def download_and_store_with_proxy(url: str, label: str, config: dict) -> Dict[st
             else:
                 logger.warning("No proxy available, using direct connection")
             
-            # Step 1: Make GET request with httpx and proxy
+            # Step 1: Make GET request with retry mechanism and proxy
             logger.info(f"Starting download (attempt {attempt + 1}): {url}")
             
             client_kwargs = {'timeout': timeout}
             if proxy:
                 client_kwargs['proxies'] = proxy
             
-            with httpx.Client(**client_kwargs) as client:
+            with create_retryable_client(**client_kwargs) as client:
                 response = client.get(url)
-                response.raise_for_status()
                 
                 # Mark proxy as successful if used
                 if proxy:
@@ -234,7 +234,7 @@ class ProxyImageDownloader:
         self.proxy_manager = get_proxy_manager(self.config.get('proxy', {}))
     
     def download_image(self, url: str, filename: str = None) -> Optional[Dict[str, Any]]:
-        """Download image from URL using proxy rotation."""
+        """Download image from URL using proxy rotation with retry mechanism."""
         proxy = self.proxy_manager.get_proxy()
         
         try:
@@ -242,9 +242,8 @@ class ProxyImageDownloader:
             if proxy:
                 client_kwargs['proxies'] = proxy
             
-            with httpx.Client(**client_kwargs) as client:
+            with create_retryable_client(**client_kwargs) as client:
                 response = client.get(url)
-                response.raise_for_status()
                 
                 # Mark proxy as successful
                 if proxy:

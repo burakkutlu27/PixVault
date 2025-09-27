@@ -2,26 +2,26 @@ import asyncio
 import random
 import time
 import re
+import os
 from typing import List, Dict, Optional
 from urllib.parse import urlparse
 from playwright.async_api import async_playwright, Browser, Page, TimeoutError as PlaywrightTimeoutError
-import logging
-
-logger = logging.getLogger(__name__)
+from .base import BaseAdapter
 
 
-class BrowserAdapter:
+class BrowserAdapter(BaseAdapter):
     """
     Browser adapter for extracting image URLs from JavaScript-rendered sites.
     Uses Playwright with human-like behavior simulation.
     """
     
-    def __init__(self):
+    def __init__(self, config: Dict = None):
+        super().__init__(config)
         self.browser: Optional[Browser] = None
         self.playwright = None
         self.domain_delays = {}  # Track last request time per domain
-        self.rate_limit_min = 5  # Minimum delay in seconds
-        self.rate_limit_max = 15  # Maximum delay in seconds
+        self.rate_limit_min = self.config.get('rate_limit_min', 5)  # Minimum delay in seconds
+        self.rate_limit_max = self.config.get('rate_limit_max', 15)  # Maximum delay in seconds
         
     async def __aenter__(self):
         """Async context manager entry."""
@@ -65,7 +65,7 @@ class BrowserAdapter:
                     await asyncio.sleep(random.uniform(0.1, 0.3))
                     
         except Exception as e:
-            logger.warning(f"Human behavior simulation failed: {e}")
+            self.logger.warning(f"Human behavior simulation failed: {e}")
     
     async def _check_for_captcha_or_login(self, page: Page) -> bool:
         """Check if page requires captcha or login."""
@@ -97,19 +97,19 @@ class BrowserAdapter:
             # Check for captcha
             for selector in captcha_selectors:
                 if await page.locator(selector).count() > 0:
-                    logger.warning("Captcha detected on page")
+                    self.logger.warning("Captcha detected on page")
                     return True
             
             # Check for login requirements
             for selector in login_selectors:
                 if await page.locator(selector).count() > 0:
-                    logger.warning("Login required on page")
+                    self.logger.warning("Login required on page")
                     return True
                     
             return False
             
         except Exception as e:
-            logger.warning(f"Error checking for captcha/login: {e}")
+            self.logger.warning(f"Error checking for captcha/login: {e}")
             return False
     
     async def _enforce_rate_limit(self, domain: str) -> None:
@@ -122,7 +122,7 @@ class BrowserAdapter:
             
             if time_since_last < required_delay:
                 sleep_time = required_delay - time_since_last
-                logger.info(f"Rate limiting: waiting {sleep_time:.2f}s for domain {domain}")
+                self.logger.info(f"Rate limiting: waiting {sleep_time:.2f}s for domain {domain}")
                 await asyncio.sleep(sleep_time)
         
         self.domain_delays[domain] = time.time()
@@ -169,7 +169,7 @@ class BrowserAdapter:
             return results
             
         except Exception as e:
-            logger.error(f"Error extracting images: {e}")
+            self.logger.error(f"Error extracting images: {e}")
             return []
     
     async def fetch_images(self, query: str, max_results: int = 50) -> List[Dict[str, str]]:
@@ -226,14 +226,14 @@ class BrowserAdapter:
                     # Enforce rate limiting
                     await self._enforce_rate_limit(search_engine['domain'])
                     
-                    logger.info(f"Searching {search_engine['name']} for: {query}")
+                    self.logger.info(f"Searching {search_engine['name']} for: {query}")
                     
                     # Navigate to search results
                     await page.goto(search_engine['url'], wait_until='networkidle', timeout=30000)
                     
                     # Check for captcha or login requirements
                     if await self._check_for_captcha_or_login(page):
-                        logger.warning(f"Captcha or login required on {search_engine['name']}, skipping")
+                        self.logger.warning(f"Captcha or login required on {search_engine['name']}, skipping")
                         continue
                     
                     # Simulate human behavior
@@ -246,16 +246,16 @@ class BrowserAdapter:
                     remaining = max_results - len(all_results)
                     all_results.extend(page_results[:remaining])
                     
-                    logger.info(f"Found {len(page_results)} images from {search_engine['name']}")
+                    self.logger.info(f"Found {len(page_results)} images from {search_engine['name']}")
                     
                     # Random delay between search engines
                     await asyncio.sleep(random.uniform(2, 5))
                     
                 except PlaywrightTimeoutError:
-                    logger.warning(f"Timeout loading {search_engine['name']}")
+                    self.logger.warning(f"Timeout loading {search_engine['name']}")
                     continue
                 except Exception as e:
-                    logger.error(f"Error searching {search_engine['name']}: {e}")
+                    self.logger.error(f"Error searching {search_engine['name']}: {e}")
                     continue
             
             await page.close()
@@ -268,12 +268,50 @@ class BrowserAdapter:
                     seen_urls.add(result['url'])
                     unique_results.append(result)
             
-            logger.info(f"Total unique images found: {len(unique_results)}")
+            self.logger.info(f"Total unique images found: {len(unique_results)}")
             return unique_results[:max_results]
             
         except Exception as e:
-            logger.error(f"Error in fetch_images: {e}")
+            self.logger.error(f"Error in fetch_images: {e}")
             return []
+    
+    def search(self, query: str, limit: int) -> List[Dict]:
+        """
+        Search for images using browser automation.
+        
+        Args:
+            query: Search query string
+            limit: Maximum number of results to return
+            
+        Returns:
+            List of dictionaries containing image metadata
+        """
+        # Run the async fetch_images method
+        return asyncio.run(self.fetch_images(query, limit))
+    
+    def download(self, item: Dict, output_dir: str) -> str:
+        """
+        Download an image from the provided item metadata.
+        
+        Args:
+            item: Dictionary containing image metadata (from search results)
+            output_dir: Directory to save the downloaded image
+            
+        Returns:
+            Path to the downloaded file
+        """
+        url = item.get('url')
+        if not url:
+            raise ValueError("No URL found in item")
+        
+        # Generate output path
+        output_path = self._generate_filename(item, output_dir)
+        
+        # Download the file
+        if self._download_file(url, output_path):
+            return output_path
+        else:
+            raise RuntimeError(f"Failed to download image from {url}")
 
 
 async def fetch_images(query: str, max_results: int = 50) -> List[Dict[str, str]]:

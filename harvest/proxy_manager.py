@@ -10,6 +10,7 @@ import httpx
 from typing import Dict, List, Optional, Any, Tuple
 from urllib.parse import urlparse
 import logging
+from .utils.retry import create_retryable_client, async_retry_with_backoff
 from dataclasses import dataclass
 from pathlib import Path
 import json
@@ -228,7 +229,7 @@ class ProxyManager:
     
     async def health_check_proxy(self, proxy: ProxyInfo) -> bool:
         """
-        Check if a proxy is healthy.
+        Check if a proxy is healthy with retry mechanism.
         
         Args:
             proxy: Proxy to check
@@ -236,7 +237,7 @@ class ProxyManager:
         Returns:
             True if proxy is healthy, False otherwise
         """
-        try:
+        async def _check_proxy():
             proxy_dict = self._proxy_to_dict(proxy)
             
             async with httpx.AsyncClient(
@@ -254,9 +255,11 @@ class ProxyManager:
                 
                 logger.debug(f"Proxy {proxy.host}:{proxy.port} health check passed")
                 return True
-                
+        
+        try:
+            return await async_retry_with_backoff(_check_proxy)
         except Exception as e:
-            logger.warning(f"Proxy {proxy.host}:{proxy.port} health check failed: {e}")
+            logger.warning(f"Proxy {proxy.host}:{proxy.port} health check failed after retries: {e}")
             proxy.is_active = False
             return False
     

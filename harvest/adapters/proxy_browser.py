@@ -9,12 +9,9 @@ import time
 from typing import List, Dict, Optional
 from urllib.parse import urlparse
 from playwright.async_api import async_playwright, Browser, Page, TimeoutError as PlaywrightTimeoutError
-import logging
 
 from .browser import BrowserAdapter
 from ..proxy_manager import get_proxy_manager, get_proxy, mark_bad, mark_success
-
-logger = logging.getLogger(__name__)
 
 
 class ProxyBrowserAdapter(BrowserAdapter):
@@ -24,8 +21,7 @@ class ProxyBrowserAdapter(BrowserAdapter):
     """
     
     def __init__(self, config: Dict = None):
-        super().__init__()
-        self.config = config or {}
+        super().__init__(config)
         self.proxy_manager = get_proxy_manager(self.config.get('proxy', {}))
         self.current_proxy = None
     
@@ -49,7 +45,7 @@ class ProxyBrowserAdapter(BrowserAdapter):
             proxy_server = proxy_config.get('server')
             if proxy_server:
                 browser_args.append(f'--proxy-server={proxy_server}')
-                logger.info(f"Using proxy for browser: {proxy_server}")
+                self.logger.info(f"Using proxy for browser: {proxy_server}")
         
         self.browser = await self.playwright.chromium.launch(
             headless=True,
@@ -84,13 +80,13 @@ class ProxyBrowserAdapter(BrowserAdapter):
             return proxy_config
             
         except Exception as e:
-            logger.error(f"Error getting proxy config: {e}")
+            self.logger.error(f"Error getting proxy config: {e}")
             return None
     
     async def _handle_proxy_error(self, error: Exception) -> None:
         """Handle proxy-related errors."""
         if self.current_proxy:
-            logger.warning(f"Proxy error, marking proxy as bad: {error}")
+            self.logger.warning(f"Proxy error, marking proxy as bad: {error}")
             mark_bad(self.current_proxy)
             self.current_proxy = None
     
@@ -153,14 +149,14 @@ class ProxyBrowserAdapter(BrowserAdapter):
                     # Enforce rate limiting
                     await self._enforce_rate_limit(search_engine['domain'])
                     
-                    logger.info(f"Searching {search_engine['name']} for: {query} (using proxy: {bool(self.current_proxy)})")
+                    self.logger.info(f"Searching {search_engine['name']} for: {query} (using proxy: {bool(self.current_proxy)})")
                     
                     # Navigate to search results
                     await page.goto(search_engine['url'], wait_until='networkidle', timeout=30000)
                     
                     # Check for captcha or login requirements
                     if await self._check_for_captcha_or_login(page):
-                        logger.warning(f"Captcha or login required on {search_engine['name']}, skipping")
+                        self.logger.warning(f"Captcha or login required on {search_engine['name']}, skipping")
                         continue
                     
                     # Simulate human behavior
@@ -173,7 +169,7 @@ class ProxyBrowserAdapter(BrowserAdapter):
                     remaining = max_results - len(all_results)
                     all_results.extend(page_results[:remaining])
                     
-                    logger.info(f"Found {len(page_results)} images from {search_engine['name']}")
+                    self.logger.info(f"Found {len(page_results)} images from {search_engine['name']}")
                     
                     # Mark proxy as successful
                     await self._handle_proxy_success()
@@ -182,11 +178,11 @@ class ProxyBrowserAdapter(BrowserAdapter):
                     await asyncio.sleep(random.uniform(2, 5))
                     
                 except PlaywrightTimeoutError:
-                    logger.warning(f"Timeout loading {search_engine['name']}")
+                    self.logger.warning(f"Timeout loading {search_engine['name']}")
                     await self._handle_proxy_error(PlaywrightTimeoutError("Timeout"))
                     continue
                 except Exception as e:
-                    logger.error(f"Error searching {search_engine['name']}: {e}")
+                    self.logger.error(f"Error searching {search_engine['name']}: {e}")
                     await self._handle_proxy_error(e)
                     continue
             
@@ -200,11 +196,11 @@ class ProxyBrowserAdapter(BrowserAdapter):
                     seen_urls.add(result['url'])
                     unique_results.append(result)
             
-            logger.info(f"Total unique images found: {len(unique_results)}")
+            self.logger.info(f"Total unique images found: {len(unique_results)}")
             return unique_results[:max_results]
             
         except Exception as e:
-            logger.error(f"Error in fetch_images: {e}")
+            self.logger.error(f"Error in fetch_images: {e}")
             await self._handle_proxy_error(e)
             return []
 

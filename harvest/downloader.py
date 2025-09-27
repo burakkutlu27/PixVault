@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 from .db import insert_image, find_by_md5
 from .utils.logger import get_logger
+from .utils.retry import create_retryable_client
 
 
 def download_and_store(url: str, label: str, config: dict) -> Dict[str, Any]:
@@ -44,12 +45,11 @@ def download_and_store(url: str, label: str, config: dict) -> Dict[str, Any]:
     }
     
     try:
-        # Step 1: Make GET request with httpx
+        # Step 1: Make GET request with retry mechanism
         logger.info(f"Starting download: {url}")
         
-        with httpx.Client(timeout=timeout) as client:
+        with create_retryable_client(timeout=timeout) as client:
             response = client.get(url)
-            response.raise_for_status()
             
             # Step 2: Check content type
             content_type = response.headers.get('content-type', '').lower()
@@ -180,31 +180,32 @@ class ImageDownloader:
         self.client = httpx.Client(timeout=timeout)
     
     def download_image(self, url: str, filename: str = None) -> Optional[Dict[str, Any]]:
-        """Download image from URL."""
+        """Download image from URL with retry mechanism."""
         try:
-            response = self.client.get(url)
-            response.raise_for_status()
-            
-            if not filename:
-                filename = self._generate_filename(url, response.headers)
-            
-            file_path = self.storage_path / filename
-            
-            # Save image
-            with open(file_path, 'wb') as f:
-                f.write(response.content)
-            
-            # Get image metadata
-            metadata = self._get_image_metadata(file_path)
-            
-            return {
-                'url': url,
-                'filename': filename,
-                'file_path': str(file_path),
-                'file_size': file_path.stat().st_size,
-                'content_type': response.headers.get('content-type'),
-                **metadata
-            }
+            # Use retryable client for this download
+            with create_retryable_client(timeout=self.timeout) as client:
+                response = client.get(url)
+                
+                if not filename:
+                    filename = self._generate_filename(url, response.headers)
+                
+                file_path = self.storage_path / filename
+                
+                # Save image
+                with open(file_path, 'wb') as f:
+                    f.write(response.content)
+                
+                # Get image metadata
+                metadata = self._get_image_metadata(file_path)
+                
+                return {
+                    'url': url,
+                    'filename': filename,
+                    'file_path': str(file_path),
+                    'file_size': file_path.stat().st_size,
+                    'content_type': response.headers.get('content-type'),
+                    **metadata
+                }
             
         except Exception as e:
             print(f"Error downloading {url}: {e}")

@@ -26,6 +26,44 @@ apis:
   unsplash:
     access_key: ""  # Add your Unsplash access key here
     rate_limit: 50  # requests per hour
+  bing:
+    api_key: ""  # Add your Bing Search API key here
+    rate_limit: 1000  # requests per month (free tier)
+  pexels:
+    api_key: ""  # Add your Pexels API key here
+    rate_limit: 200  # requests per hour (free tier)
+
+# Source configuration
+sources:
+  - unsplash
+  - bing
+  - pexels
+
+# HTTP client configuration
+http_client:
+  user_agents:
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0"
+    - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15"
+    - "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0 Safari/537.36"
+  timeout: 30
+  max_retries: 3
+  retry_delay: 1.0
+  proxies:
+    # Add your proxy configurations here
+    # - host: "proxy1.example.com"
+    #   port: 8080
+    #   username: "user1"
+    #   password: "pass1"
+    #   protocol: "http"
+    # - host: "proxy2.example.com"
+    #   port: 3128
+    #   username: "user2"
+    #   password: "pass2"
+    #   protocol: "http"
 
 # Logging settings
 logging:
@@ -36,6 +74,7 @@ logging:
 # Scheduler settings (for automated harvesting)
 scheduler:
   enabled: false
+  interval_hours: 24  # Run every X hours
   jobs:
     - name: "daily_harvest"
       schedule: "0 9 * * *"  # Daily at 9 AM

@@ -1,13 +1,55 @@
 """
-Logging utilities for the harvest package.
+Enhanced logging utilities for the harvest package.
 """
 
 import logging
 import json
 import sys
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
+
+
+class ColoredFormatter(logging.Formatter):
+    """Colored console formatter for logs."""
+    
+    # ANSI color codes
+    COLORS = {
+        'DEBUG': '\033[36m',      # Cyan
+        'INFO': '\033[32m',       # Green
+        'WARNING': '\033[33m',    # Yellow
+        'ERROR': '\033[31m',      # Red
+        'CRITICAL': '\033[35m',   # Magenta
+        'RESET': '\033[0m'        # Reset
+    }
+    
+    def format(self, record: logging.LogRecord) -> str:
+        """Format log record with colors."""
+        # Get color for the log level
+        color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
+        reset = self.COLORS['RESET']
+        
+        # Format timestamp
+        timestamp = datetime.fromtimestamp(record.created).strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Create colored output
+        level_colored = f"{color}{record.levelname:<8}{reset}"
+        logger_name = f"[{record.name}]" if record.name != 'root' else ""
+        
+        # Base message
+        message = f"{timestamp} {level_colored} {logger_name} {record.getMessage()}"
+        
+        # Add extra fields if they exist
+        if hasattr(record, 'extra_fields') and record.extra_fields:
+            extra_str = " | ".join([f"{k}={v}" for k, v in record.extra_fields.items()])
+            message += f" | {extra_str}"
+        
+        # Add exception info if present
+        if record.exc_info:
+            message += f"\n{self.formatException(record.exc_info)}"
+        
+        return message
 
 
 class JSONFormatter(logging.Formatter):
@@ -45,14 +87,18 @@ class JSONFormatter(logging.Formatter):
 
 def setup_logger(name: str = "harvest", 
                 level: str = "INFO",
-                log_file: Optional[str] = None) -> logging.Logger:
+                enable_console: bool = True,
+                enable_file_logging: bool = True,
+                log_dir: str = "logs") -> logging.Logger:
     """
-    Set up logger with JSON formatting for both console and file output.
+    Set up enhanced logger with colored console output and separate log files.
     
     Args:
         name: Logger name
         level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        log_file: Path to log file (optional)
+        enable_console: Whether to enable colored console output
+        enable_file_logging: Whether to enable file logging
+        log_dir: Directory for log files
         
     Returns:
         Configured logger instance
@@ -63,22 +109,34 @@ def setup_logger(name: str = "harvest",
     # Clear existing handlers to avoid duplicates
     logger.handlers.clear()
     
-    # Create JSON formatter
-    json_formatter = JSONFormatter()
+    # Console handler with colored output
+    if enable_console:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(ColoredFormatter())
+        logger.addHandler(console_handler)
     
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(json_formatter)
-    logger.addHandler(console_handler)
-    
-    # File handler (optional)
-    if log_file:
-        log_path = Path(log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+    # File handlers for different log levels
+    if enable_file_logging:
+        log_path = Path(log_dir)
+        log_path.mkdir(parents=True, exist_ok=True)
         
-        file_handler = logging.FileHandler(log_path, encoding='utf-8')
-        file_handler.setFormatter(json_formatter)
-        logger.addHandler(file_handler)
+        # Info log file (INFO and above)
+        info_handler = logging.FileHandler(
+            log_path / "info.log", 
+            encoding='utf-8'
+        )
+        info_handler.setLevel(logging.INFO)
+        info_handler.setFormatter(JSONFormatter())
+        logger.addHandler(info_handler)
+        
+        # Error log file (ERROR and above)
+        error_handler = logging.FileHandler(
+            log_path / "error.log", 
+            encoding='utf-8'
+        )
+        error_handler.setLevel(logging.ERROR)
+        error_handler.setFormatter(JSONFormatter())
+        logger.addHandler(error_handler)
     
     # Prevent propagation to root logger
     logger.propagate = False
@@ -87,12 +145,18 @@ def setup_logger(name: str = "harvest",
 
 
 def get_logger(name: str = "harvest") -> logging.Logger:
-    """Get existing logger or create a new one with default settings."""
+    """Get existing logger or create a new one with enhanced settings."""
     logger = logging.getLogger(name)
     
-    # If logger doesn't have handlers, set it up with defaults
+    # If logger doesn't have handlers, set it up with enhanced defaults
     if not logger.handlers:
-        return setup_logger(name)
+        return setup_logger(
+            name=name,
+            level="INFO",
+            enable_console=True,
+            enable_file_logging=True,
+            log_dir="logs"
+        )
     
     return logger
 
